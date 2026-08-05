@@ -23,3 +23,6 @@ uvm/simv
 uvm/simv.daidir/
 uvm/csrc/
 uvm/*.log
+
+# Local scratch notes (not tracked)
+NOTES.md
