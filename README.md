@@ -343,12 +343,18 @@ Per-gate payload shape (all include `gate` + `status`):
 ## Waveforms
 
 The `cocotb_test` launcher forwards extra args to the runner, so `--waves` dumps
-an FST (into the test's `TEST_TMPDIR`):
+an FST. The runner preserves it in the test's undeclared outputs (next to
+`result.json`), so it survives the ephemeral build dir:
 
 ```bash
 bazel test //:sim_random_test --test_arg=--waves --test_output=all
-# then locate it:
-find "$(bazel info bazel-testlogs)/sim_random_test" -name '*.fst'
+# or, defaulting to the random test (override with TEST=<name>):
+make wave
+
+# extract the FST from the test's outputs and open it:
+unzip -o "$(bazel info bazel-testlogs)/sim_random_test/test.outputs/outputs.zip" \
+      apb_mem.fst -d waves/
+gtkwave waves/apb_mem.fst tb/apb_mem.gtkw   # tb/ ships a saved signal layout
 ```
 
 ## CI

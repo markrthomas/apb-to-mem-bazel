@@ -13,7 +13,7 @@
 BAZEL ?= bazel
 
 .PHONY: default help \
-	test test-all test-write-read test-random test-walking test-one \
+	test test-all test-write-read test-random test-walking test-one wave \
 	lp lint coverage uvm check regress ci sim clean
 
 default: help
@@ -27,6 +27,9 @@ help:
 	@echo "    make test-random         # bazel test //:sim_random_test"
 	@echo "    make test-walking        # bazel test //:sim_walking_test"
 	@echo "    make test-one TEST=<name># bazel test //:sim_<name>"
+	@echo ""
+	@echo "  Waves (FST):"
+	@echo "    make wave                # dump waves for //:sim_random_test (override TEST=<name>)"
 	@echo ""
 	@echo "  Other gates:"
 	@echo "    make lp                  # bazel test //:lp"
@@ -63,6 +66,12 @@ test-walking:
 test-one:
 	@if [ -z "$(TEST)" ]; then echo "usage: make test-one TEST=<testcase>"; exit 2; fi
 	$(BAZEL) test //:sim_$(TEST) $(ARGS)
+
+# Dump an FST waveform. Defaults to the random read/write test; override with
+# TEST=<name> (e.g. TEST=walking_test). The runner preserves the FST in the
+# test's outputs: bazel-testlogs/sim_<name>/test.outputs/outputs.zip (apb_mem.fst).
+wave:
+	$(BAZEL) test //:sim_$(if $(TEST),$(TEST),random_test) --test_arg=--waves --test_output=all $(ARGS)
 
 # --- other gates -------------------------------------------------------------
 
