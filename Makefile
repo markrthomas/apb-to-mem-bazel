@@ -29,7 +29,7 @@ help:
 	@echo "    make test-one TEST=<name># bazel test //:sim_<name>"
 	@echo ""
 	@echo "  Waves (FST):"
-	@echo "    make wave                # dump waves for //:sim_random_test (override TEST=<name>)"
+	@echo "    make wave                # dump + extract waves to waves/ for //:sim_random_test (override TEST=<name>)"
 	@echo ""
 	@echo "  Other gates:"
 	@echo "    make lp                  # bazel test //:lp"
@@ -67,11 +67,19 @@ test-one:
 	@if [ -z "$(TEST)" ]; then echo "usage: make test-one TEST=<testcase>"; exit 2; fi
 	$(BAZEL) test //:sim_$(TEST) $(ARGS)
 
-# Dump an FST waveform. Defaults to the random read/write test; override with
-# TEST=<name> (e.g. TEST=walking_test). The runner preserves the FST in the
-# test's outputs: bazel-testlogs/sim_<name>/test.outputs/outputs.zip (apb_mem.fst).
+# Dump an FST waveform and extract it to $(WAVE_DIR)/ ready to open. Defaults to
+# the random read/write test; override with TEST=<name> (e.g. TEST=walking_test).
+# --nocache_test_results forces a fresh run (test-result caching is otherwise on,
+# despite the no-cache tag) so the waves reflect the current stimulus.
+WAVE_TEST = $(if $(TEST),$(TEST),random_test)
+WAVE_DIR ?= waves
 wave:
-	$(BAZEL) test //:sim_$(if $(TEST),$(TEST),random_test) --test_arg=--waves --test_output=all $(ARGS)
+	$(BAZEL) test //:sim_$(WAVE_TEST) --test_arg=--waves --nocache_test_results --test_output=all $(ARGS)
+	@mkdir -p $(WAVE_DIR)
+	@unzip -o "$$($(BAZEL) info bazel-testlogs)/sim_$(WAVE_TEST)/test.outputs/outputs.zip" '*.fst' -d $(WAVE_DIR) >/dev/null
+	@echo ""
+	@echo "  Waveform: $$(ls $(WAVE_DIR)/*.fst)"
+	@echo "  open with: gtkwave $(WAVE_DIR)/*.fst tb/apb_mem.gtkw"
 
 # --- other gates -------------------------------------------------------------
 

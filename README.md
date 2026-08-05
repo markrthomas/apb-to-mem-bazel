@@ -342,20 +342,29 @@ Per-gate payload shape (all include `gate` + `status`):
 
 ## Waveforms
 
-The `cocotb_test` launcher forwards extra args to the runner, so `--waves` dumps
-an FST. The runner preserves it in the test's undeclared outputs (next to
-`result.json`), so it survives the ephemeral build dir:
+The easy path — `make wave` runs a test with `--waves` and drops a ready-to-open
+FST in `waves/` (defaults to the random test; override with `TEST=<name>`):
 
 ```bash
-bazel test //:sim_random_test --test_arg=--waves --test_output=all
-# or, defaulting to the random test (override with TEST=<name>):
-make wave
-
-# extract the FST from the test's outputs and open it:
-unzip -o "$(bazel info bazel-testlogs)/sim_random_test/test.outputs/outputs.zip" \
-      apb_mem.fst -d waves/
+make wave                              # → waves/apb_mem.fst
+make wave TEST=walking_test            # a different testcase
 gtkwave waves/apb_mem.fst tb/apb_mem.gtkw   # tb/ ships a saved signal layout
 ```
+
+Under the hood: the `cocotb_test` launcher forwards `--waves` to the runner,
+which writes the FST into the ephemeral build dir *and* copies it into the test's
+undeclared outputs (next to `result.json`) so it survives. `make wave` just
+extracts it for you; to do it by hand:
+
+```bash
+bazel test //:sim_random_test --test_arg=--waves --nocache_test_results
+unzip -o "$(bazel info bazel-testlogs)/sim_random_test/test.outputs/outputs.zip" \
+      apb_mem.fst -d waves/
+```
+
+> `--nocache_test_results` forces a fresh run — test results are otherwise cached
+> (the `no-cache` tag only disables the *action* cache), which would replay stale
+> waves from a prior run.
 
 ## CI
 
