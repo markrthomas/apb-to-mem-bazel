@@ -12,6 +12,14 @@ with cocotb 1.9.2 + pyuvm 4.0.1). Verify with:
 bazel test //:ci        # expect 7/7 pass; //:uvm passes by skipping if no UVM sim
 ```
 
+**Contents**
+
+1. [Bazel in this repo](#part-1--bazel-in-this-repo)
+2. [The testbench](#part-2--the-testbench)
+3. [Add your own test (end-to-end)](#part-3--add-your-own-test-end-to-end)
+4. [The other gates: lint, coverage, low-power, UVM](#part-4--the-other-gates)
+5. [JSON results & debugging](#part-5--json-results--debugging)
+
 ---
 
 ## Part 1 — Bazel in this repo
@@ -22,13 +30,19 @@ Bazel is *not* compiling the RTL itself. It owns three things:
 
 1. **The target graph** — every gate (each functional test, lint, coverage, lp, uvm) is a
    Bazel `test` target. `bazel query //...` lists them.
-2. **Runfiles** — it stages the exact source files each target declares into a sandbox-ish
-   run dir, so a test can only see what it lists in `BUILD.bazel`.
+2. **Runfiles** — it stages the exact source files each target declares into a run dir, so
+   a test can only see what it lists in `BUILD.bazel`.
 3. **The pass/fail contract** — a target passes iff its launcher exits 0.
 
 The actual simulation is done by the **system toolchain**, reached through a generated bash
 launcher. That's deliberate (non-hermetic); see CLAUDE.md for why and for the two toolchain
 pins that make it reliable.
+
+| Bazel owns | The host owns |
+|---|---|
+| target graph, dependencies, runfiles | `iverilog` / `vvp`, `verilator`, `g++` |
+| pass/fail (launcher exit code) | the Python interpreter (cocotb + pyuvm) |
+| result collection (`result.json`, BEP) | the actual simulation |
 
 ### 1.2 The target graph
 
@@ -36,6 +50,7 @@ pins that make it reliable.
 bazel query //...                        # every target
 bazel query 'tests(//:ci)'               # what the ci suite expands to
 bazel query 'attr(tags, sim, //...)'     # everything tagged 'sim'
+bazel query 'deps(//:sim_random_test)'   # a target's inputs (sources + runner)
 ```
 
 The important targets (defined in [`BUILD.bazel`](../BUILD.bazel)):
@@ -44,7 +59,7 @@ The important targets (defined in [`BUILD.bazel`](../BUILD.bazel)):
 |---|---|
 | `//:sim_write_read_test`, `//:sim_random_test`, `//:sim_walking_test` | one cocotb testcase each |
 | `//:sim` | test_suite of the three above |
-| `//:lint` | `verilator --lint-only` (skips if no Verilator) |
+| `//:lint` | `iverilog -Wall` + `verilator --lint-only` (verilator part skips if absent) |
 | `//:coverage` | Verilator coverage build, gated on a line-coverage floor |
 | `//:lp` | low-power UPF-emulated cocotb test |
 | `//:uvm` | SV/UVM flow (skips without vcs/xrun/qrun) |
@@ -95,7 +110,8 @@ bazel test //:sim_random_test
 ```
 
 One `@cocotb.test` runs per Bazel target, each in its own `vvp` process — that's what gives
-every testcase a **fresh, time-0-zeroed memory**.
+every testcase a **fresh, time-0-zeroed memory**. `run_cocotb.py` pins the timescale to
+`1ns/1ps` (apt Icarus defaults to 1s precision otherwise) and builds with `-g2012`.
 
 ---
 
@@ -136,12 +152,37 @@ Scoreboard  ◀── analysis port ──  Monitor  ◀────────
 
 That scoreboard assertion, plus cocotb's "0 failed" gate, is the whole pass/fail story.
 
-### 2.3 The three sequences (in `apb_seq.py`)
+### 2.3 The BFM's two-phase drive (the pin-level bit)
 
-- `ApbWriteReadSeq` — write a random byte, read the same address back (32×).
-- `ApbRandomSeq` — random read/write mix; reads biased 4:1 toward already-written addresses
-  so they mostly exercise stored data (64×).
-- `ApbWalkingSeq` — directed edge cases: first/last addresses × all-0/all-1/0x55/0xAA payloads.
+The BFM is the one place signal timing lives. It drives request signals **after** the clock
+edge (on `FallingEdge`) so the DUT samples clean values on the next `RisingEdge` — no races.
+A single transfer (`_transfer` in `apb_bfm.py`) is:
+
+```
+     ┌── FallingEdge ──┐   ┌── FallingEdge ──┐        ┌── FallingEdge ──┐
+PCLK ─┘                └───┘                 └── ... ──┘                 └──
+PSEL     0    │ 1 (SETUP)   │ 1 (ACCESS)              │ 0 (IDLE)
+PENABLE  0    │ 0           │ 1  ← sample PRDATA here │ 0
+PADDR    -    │ A           │ A                       │ -
+         drive after edge ──┘   RisingEdge: wait PREADY, read PRDATA
+```
+
+- **SETUP** (after a falling edge): `PSEL=1`, `PENABLE=0`, address/control driven.
+- **ACCESS** (next falling edge): `PENABLE=1`; on the following rising edge, wait for
+  `PREADY` (tied high here, so one cycle) and sample `PRDATA`.
+- **IDLE**: drop `PSEL`/`PENABLE`.
+
+`ApbBfm` is a pyuvm `Singleton`, so the driver and monitor share one instance and its queues.
+`start_bfms()` launches the `driver_bfm`/`monitor_bfm` coroutines that serialise commands onto
+the bus and record every completed transfer.
+
+### 2.4 The three sequences (in `apb_seq.py`)
+
+| Sequence | Stimulus | Why |
+|---|---|---|
+| `ApbWriteReadSeq` | write a random byte, read the same address back (32×) | basic data integrity |
+| `ApbRandomSeq` | random read/write mix (64×), reads biased 4:1 to already-written addresses | exercise stored data, not just never-written 0s |
+| `ApbWalkingSeq` | first/last addresses × {0x00,0x01,0x55,0xAA,0xFF} | directed corner cases |
 
 Each `uvm_test` in `apb_test.py` is just `BaseTest` with a different `seq_cls`.
 
@@ -151,6 +192,13 @@ Each `uvm_test` in `apb_test.py` is just `BaseTest` with a different `seq_cls`.
 
 Goal: a **back-to-back writes then verify** sequence, wired up as `//:sim_burst_test`.
 Three edits, no rule changes.
+
+```mermaid
+flowchart LR
+    A["1. new uvm_sequence<br/>tb/apb_seq.py"]:::s --> B["2. uvm_test + @cocotb.test<br/>tb/apb_test.py"]:::s --> C["3. add name to<br/>functional_suite.testcases<br/>BUILD.bazel"]:::s --> D["bazel test //:sim_burst_test"]:::a
+    classDef a fill:#1F4E79,stroke:#14385A,color:#FFFFFF;
+    classDef s fill:#C9D4DF,stroke:#1F4E79,color:#1F4E79;
+```
 
 ### Step 1 — write the sequence (`tb/apb_seq.py`)
 
@@ -231,7 +279,66 @@ a different top module).
 
 ---
 
-## Part 4 — JSON results & debugging
+## Part 4 — The other gates
+
+The functional tests aren't the whole story. Four more gates run under the same
+`hdl_tool_test` rule (except `lp`, which is a `cocotb_test`).
+
+### 4.1 Lint — `//:lint`
+
+`bazel/run_lint.py` runs two checks over `rtl/apb_mem.sv`:
+
+1. `iverilog -g2012 -Wall` compile check — a **hard failure** if it errors.
+2. `verilator --lint-only -Wall -Wno-DECLFILENAME` — **skips cleanly** if Verilator isn't on
+   `PATH` (records `"verilator": "skipped"` in the JSON).
+
+### 4.2 Coverage — `//:coverage`
+
+`bazel/run_coverage.py` does a Verilator `--coverage` build of the RTL, links it against
+`sim/sim_main.cpp`, runs it to emit `coverage.dat`, converts to lcov, and gates on a
+**line-coverage floor** (`COV_MIN`, default 100%). It skips (exit 0) if Verilator is absent.
+
+```bash
+bazel test //:coverage --test_output=all                 # see "[COVERAGE] line coverage X%"
+COV_MIN=90 bazel test --test_env=COV_MIN //:coverage      # relax the floor
+```
+
+> The DUT's `PSLVERR` tie-off is wrapped in `// verilator coverage_off/on` so the constant
+> has no uncoverable point dragging the number below 100%.
+
+### 4.3 Low-power — `//:lp`
+
+`lp/apb_mem_lp.sv` splits the array into a switchable child (`PD_MEM`) to demo a UPF flow
+(switch + isolation + retention), hand-modeled behind `` `ifdef LP_EMULATE `` because the
+sims aren't UPF-aware. The `//:lp` target compiles with `LP_EMULATE=1` and runs
+`lp/test_lp.py`'s `power_cycle_test`, which drives the power pins directly (a minimal APB
+master, not the pyuvm stack) and asserts:
+
+| Step | Property | Check |
+|---|---|---|
+| 1 | powered-on read-back | pattern reads back correctly |
+| 2 | isolation | while off, `PREADY=0` and `PRDATA` clamps to `0` (never X on the AON boundary) |
+| 3 | retention | power cycle with `ret=1` preserves contents |
+| 4 | corruption | power cycle with `ret=0` loses them (reads X) — proves retention did work |
+
+```bash
+bazel test //:lp --test_output=all      # watch the 5 "[...] OK" log lines
+```
+
+### 4.4 UVM — `//:uvm`
+
+The `uvm/` tree is a full SystemVerilog UVM testbench, plus `uvm/apb_sva.sv` — a checker
+`bind`-ed to every `apb_mem` (protocol rules + this slave's tie-offs; see the README table).
+`bazel/run_uvm.py` looks for `vcs` / `xrun` / `qrun` and **skips (exit 0)** if none is
+licensed, which is the case on the dev host. On a licensed host:
+
+```bash
+UVM_TEST=apb_random_test bazel test --test_env=UVM_TEST //:uvm
+```
+
+---
+
+## Part 5 — JSON results & debugging
 
 Every test writes a machine-readable `result.json` and echoes a `[JSON] {...}` line:
 
@@ -241,17 +348,36 @@ bazel test //:sim_random_test --test_output=all | grep '\[JSON\]'
 unzip -p "$(bazel info bazel-testlogs)/sim_random_test/test.outputs/outputs.zip" result.json
 ```
 
+The payload always has `gate` + `status`; the rest depends on the gate:
+
+| Gate | Extra fields |
+|---|---|
+| `sim` / `lp` | `testcase`, `toplevel`, `tests`, `failed` |
+| `lint` | `iverilog`, `verilator` |
+| `coverage` | `line_pct`, `floor` (or `reason` when skipped) |
+| `uvm` | `simulator`, `uvm_test` (or `reason` when skipped) |
+
 `--config=json` additionally streams the whole invocation to `bazel-events.json` (BEP).
 
-**When a test fails**, `--test_output=all` shows the pyuvm log. Look for the scoreboard's
-`MISMATCH @0xADDR: got 0xXX exp 0xYY` line — it names the address and both bytes. Re-run that
-one target with `--test_arg=--waves` and open the FST to see the pins.
+### Debugging a failure
 
-**Common gotchas**
+1. Re-run the one target with `--test_output=all` to see the pyuvm log.
+2. Look for the scoreboard line: `MISMATCH @0xADDR: got 0xXX exp 0xYY` — it names the
+   address and both bytes.
+3. Re-run with `--test_arg=--waves` and open the FST to see the pins around that address.
 
-- Wrong Python → cocotb import errors or a hang. The launcher uses `/usr/bin/python3`; the
-  `oss-cad-suite` python on `PATH` is cocotb 2.x and won't work. Override with
-  `--test_env=APB_PYTHON=/path/to/python`.
-- No sim log on a pass → add `--test_output=all` (Bazel is quiet by default).
-- `//:uvm` "passes" instantly → it's skipping (no licensed UVM simulator). Expected here.
-- `//:lint` / `//:coverage` skip → no Verilator on `PATH`. Install it to enable them.
+```bash
+bazel test //:sim_random_test --test_arg=--waves --test_output=all
+gtkwave "$(find "$(bazel info bazel-testlogs)/sim_random_test" -name '*.fst' | head -1)" \
+        tb/apb_mem.gtkw      # a saved signal layout ships in tb/
+```
+
+### Common gotchas
+
+| Symptom | Cause / fix |
+|---|---|
+| cocotb import error or hang | wrong Python — the launcher uses `/usr/bin/python3` (cocotb 1.9.2), not the oss-cad-suite cocotb 2.x on `PATH`. Override: `--test_env=APB_PYTHON=/path/to/python`. |
+| No sim log on a pass | add `--test_output=all` (Bazel is quiet by default). |
+| `//:uvm` "passes" instantly | it's skipping — no licensed UVM simulator. Expected here. |
+| `//:lint` / `//:coverage` skip | no Verilator on `PATH`. Install it to enable them. |
+| Stale-looking result | there isn't one — sim targets are `no-cache` and always re-run. |
