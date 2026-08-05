@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Iterator
@@ -118,6 +119,18 @@ def main() -> int:
             timescale=timescale,
             extra_env={"PYGPI_PYTHON_BIN": sys.executable, "PYTHON_BIN": sys.executable},
         )
+
+    # Preserve any waveform: the runner writes the FST into build_dir (an
+    # ephemeral TEST_TMPDIR that the next run wipes). Copy it into the test's
+    # undeclared-outputs dir so it travels with the run alongside result.json —
+    # Bazel collects it into bazel-testlogs/<target>/test.outputs/.
+    if args.waves:
+        outdir = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR")
+        if outdir:
+            os.makedirs(outdir, exist_ok=True)
+            for fst in Path(build_dir).glob("*.fst"):
+                shutil.copy2(fst, Path(outdir) / fst.name)
+                print(f"[WAVES] {fst.name} -> test.outputs/")
 
     total, failed = get_results(Path(results_xml))
     passed = failed == 0

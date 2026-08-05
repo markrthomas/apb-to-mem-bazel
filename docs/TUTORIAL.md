@@ -84,8 +84,11 @@ Two flags you'll reach for constantly:
 
 ```bash
 bazel test //:sim_random_test --test_arg=--waves --test_output=all
-# find the FST:
-find "$(bazel info bazel-testlogs)/sim_random_test" -name '*.fst'
+# or, defaulting to the random test (override with TEST=<name>):
+make wave
+# the runner preserves the FST in the test's outputs; extract it:
+unzip -o "$(bazel info bazel-testlogs)/sim_random_test/test.outputs/outputs.zip" \
+      apb_mem.fst -d waves/
 ```
 
 > **Note on caching:** sim targets are tagged `no-cache`, so re-running always re-executes
@@ -367,9 +370,10 @@ The payload always has `gate` + `status`; the rest depends on the gate:
 3. Re-run with `--test_arg=--waves` and open the FST to see the pins around that address.
 
 ```bash
-bazel test //:sim_random_test --test_arg=--waves --test_output=all
-gtkwave "$(find "$(bazel info bazel-testlogs)/sim_random_test" -name '*.fst' | head -1)" \
-        tb/apb_mem.gtkw      # a saved signal layout ships in tb/
+make wave                    # = bazel test //:sim_random_test --test_arg=--waves ...
+unzip -o "$(bazel info bazel-testlogs)/sim_random_test/test.outputs/outputs.zip" \
+      apb_mem.fst -d waves/
+gtkwave waves/apb_mem.fst tb/apb_mem.gtkw      # a saved signal layout ships in tb/
 ```
 
 ### Common gotchas
