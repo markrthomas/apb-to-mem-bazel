@@ -1,0 +1,11 @@
+"""apb-to-mem-bazel — Bazel (Bzlmod) module for the APB-mem DV flow.
+
+Intentionally dependency-free: the test rules in //bazel:hdl.bzl are custom
+Starlark that shell out to the system Python (cocotb + pyuvm) and the system
+Icarus/Verilator, so no external Bazel modules are needed to build the graph.
+"""
+
+module(
+    name = "apb_to_mem_bazel",
+    version = "0.1.0",
+)

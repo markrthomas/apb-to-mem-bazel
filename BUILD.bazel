@@ -1,0 +1,111 @@
+# =============================================================================
+# apb-to-mem-bazel — Bazel target graph replacing the source uvm_review Makefile.
+#
+# Each gate is a test target built from the custom Starlark rules in
+# //bazel:hdl.bzl; test_suites and per-target tags stand in for the pytest
+# markers. Every test shells out to the system toolchain (see //bazel:hdl.bzl)
+# and exports a JSON result via //bazel:jsonout.py.
+#
+# make -> bazel (see README for the full table):
+#   make test / test-all   ->  bazel test //:sim
+#   make lp                ->  bazel test //:lp
+#   make lint              ->  bazel test //:lint
+#   make coverage          ->  bazel test //:coverage
+#   make uvm               ->  bazel test //:uvm
+#   make check             ->  bazel test //:check
+#   make regress           ->  bazel test //:regress
+#   make ci                ->  bazel test //:ci   (or //...)
+#   pytest -m sim          ->  bazel test //... --test_tag_filters=sim
+# =============================================================================
+
+load("//bazel:hdl.bzl", "SIM_TAGS", "cocotb_test", "functional_suite", "hdl_tool_test")
+
+# --- source groups -----------------------------------------------------------
+
+filegroup(name = "tb_srcs", srcs = glob(["tb/*.py"]))
+
+filegroup(name = "lp_rtl", srcs = [
+    "lp/apb_mem_array.sv",
+    "lp/apb_mem_lp.sv",
+])
+
+filegroup(name = "uvm_srcs", srcs = glob(["uvm/*.sv"]))
+
+# --- functional cocotb/pyuvm tests (marker: sim) -----------------------------
+# functional_suite stamps out sim_<testcase> targets + the ":sim" test_suite.
+
+functional_suite(
+    name = "sim",
+    testcases = [
+        "write_read_test",
+        "random_test",
+        "walking_test",
+    ],
+    toplevel = "apb_mem",
+    module = "apb_test",
+    module_dir = "tb",
+    sources = ["rtl/apb_mem.sv"],
+    module_srcs = [":tb_srcs"],
+)
+
+# --- low-power UPF-emulated test (marker: lp) --------------------------------
+
+cocotb_test(
+    name = "lp",
+    toplevel = "apb_mem_lp",
+    module = "test_lp",
+    module_dir = "lp",
+    testcase = "power_cycle_test",
+    sources = [":lp_rtl"],
+    module_srcs = ["lp/test_lp.py"],
+    defines = ["LP_EMULATE=1"],
+    size = "medium",
+    tags = SIM_TAGS + ["lp"],
+)
+
+# --- gates (lint / coverage / uvm) -------------------------------------------
+
+hdl_tool_test(
+    name = "lint",
+    script = "//bazel:run_lint.py",
+    sources = ["rtl/apb_mem.sv"],
+    size = "small",
+    tags = SIM_TAGS + ["lint"],
+)
+
+hdl_tool_test(
+    name = "coverage",
+    script = "//bazel:run_coverage.py",
+    sources = [
+        "rtl/apb_mem.sv",
+        "sim/sim_main.cpp",
+    ],
+    size = "medium",
+    tags = SIM_TAGS + ["coverage"],
+)
+
+# uvm sources in uvm/Makefile MULTI_SRC order (if, rtl, sva, pkg, top); the
+# `include'd class files ride along via `data` so the pkg compiles on a licensed
+# host. Skips cleanly here (no vcs/xrun/qrun).
+hdl_tool_test(
+    name = "uvm",
+    script = "//bazel:run_uvm.py",
+    sources = [
+        "uvm/apb_if.sv",
+        "rtl/apb_mem.sv",
+        "uvm/apb_sva.sv",
+        "uvm/apb_pkg.sv",
+        "uvm/apb_tb_top.sv",
+    ],
+    data = [":uvm_srcs"],
+    size = "small",
+    tags = SIM_TAGS + ["uvm"],
+)
+
+# --- aggregate suites (map the old make aggregate targets) -------------------
+
+test_suite(name = "check", tests = [":sim", ":lint"])
+
+test_suite(name = "regress", tests = [":sim", ":lint", ":lp"])
+
+test_suite(name = "ci", tests = [":sim", ":lint", ":lp", ":coverage", ":uvm"])

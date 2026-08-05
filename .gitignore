@@ -1,0 +1,25 @@
+# Bazel symlinks + outputs
+/bazel-*
+bazel-events.json
+MODULE.bazel.lock
+
+# Python
+__pycache__/
+*.pyc
+
+# cocotb / sim build output (when run outside Bazel's TEST_TMPDIR)
+sim_build/
+results*.xml
+*.fst
+*.vcd
+
+# Verilator coverage artifacts
+sim/obj_dir_cov/
+sim/coverage.info
+sim/coverage.dat
+
+# UVM simulator output (licensed hosts)
+uvm/simv
+uvm/simv.daidir/
+uvm/csrc/
+uvm/*.log

@@ -1,0 +1,18 @@
+# The HW-sim tests are non-hermetic: they shell out to the system Python (which
+# carries cocotb + pyuvm) and the system Icarus/Verilator. Forward the env that
+# locates that toolchain into the test environment.
+test --test_env=PATH
+test --test_env=HOME
+test --test_env=ICARUS_BIN_DIR
+# Override the interpreter the launchers exec (defaults to /usr/bin/python3);
+# set to the interpreter that carries cocotb + pyuvm on your host / in CI.
+test --test_env=APB_PYTHON
+
+# Show failing test logs inline; keep each test's exported result.json (written
+# to TEST_UNDECLARED_OUTPUTS_DIR) in bazel-testlogs/<target>/test.outputs/.
+test --test_output=errors
+test --zip_undeclared_test_outputs
+
+# `bazel test --config=json //...` additionally exports the whole invocation as
+# a Build Event Protocol JSON stream (one JSON object per line).
+common:json --build_event_json_file=bazel-events.json

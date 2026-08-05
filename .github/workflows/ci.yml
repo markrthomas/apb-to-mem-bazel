@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install RTL tools (Icarus + Verilator) + pip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends iverilog verilator python3-pip
+
+      # The Bazel test launchers shell out to a system interpreter that carries
+      # cocotb + pyuvm (APB_PYTHON, default /usr/bin/python3). Install into that
+      # same interpreter so the sim VPI and the testbench import agree.
+      - name: Install cocotb + pyuvm into the system interpreter
+        run: |
+          /usr/bin/python3 -m pip install --break-system-packages 'cocotb==1.9.2' 'pyuvm==4.0.1'
+
+      - name: Install Bazelisk
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/bazel \
+            https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
+          sudo chmod +x /usr/local/bin/bazel
+          bazel version
+
+      - name: Tool versions
+        run: |
+          iverilog -V | head -1
+          verilator --version
+          /usr/bin/python3 -c "import cocotb, pyuvm; print('cocotb', cocotb.__version__, 'pyuvm', pyuvm.__version__)"
+
+      # Full DV gate. apt Icarus is at /usr/bin, so ICARUS_BIN_DIR defaults hold;
+      # --config=json also drops a Build Event Protocol JSON stream. uvm skips
+      # (no UVM simulator on the runner).
+      - name: bazel test //:ci
+        env:
+          APB_PYTHON: /usr/bin/python3
+        run: bazel test --config=json //:ci
+
+      - name: Upload JSON exports (per-test result.json + BEP stream)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazel-json
+          path: |
+            bazel-events.json
+            bazel-testlogs/**/test.outputs/outputs.zip
+          if-no-files-found: ignore

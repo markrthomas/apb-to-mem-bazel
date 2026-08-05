@@ -1,0 +1,9 @@
+# The bazel/ package: Starlark rules (hdl.bzl) + the Python runner scripts they
+# launch. exports_files makes the scripts referenceable as labels from //.
+exports_files([
+    "run_cocotb.py",
+    "run_lint.py",
+    "run_coverage.py",
+    "run_uvm.py",
+    "jsonout.py",
+])
