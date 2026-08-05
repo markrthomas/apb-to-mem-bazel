@@ -8,6 +8,9 @@ is replaced by custom Starlark test rules that drive cocotb's Python runner, wit
 `test_suite`s + tags standing in for the make targets, and every test exporting a
 JSON result.
 
+New here? [`docs/TUTORIAL.md`](docs/TUTORIAL.md) is a hands-on walk through running
+the Bazel gates and extending the testbench (with a full "add your own test" example).
+
 ## Architecture
 
 `apb_mem` is a zero-wait-state APB3 slave wrapping a byte-wide memory array
