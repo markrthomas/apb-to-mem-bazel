@@ -83,10 +83,12 @@ Two flags you'll reach for constantly:
   `run_cocotb.py`.
 
 ```bash
-bazel test //:sim_random_test --test_arg=--waves --test_output=all
-# or, defaulting to the random test (override with TEST=<name>):
-make wave
-# the runner preserves the FST in the test's outputs; extract it:
+make wave                          # → waves/apb_mem.fst (defaults to the random test)
+make wave TEST=walking_test        # a different testcase
+
+# by hand (what `make wave` wraps): the runner preserves the FST in the test's
+# outputs; --nocache_test_results forces a fresh run so the waves aren't stale.
+bazel test //:sim_random_test --test_arg=--waves --nocache_test_results
 unzip -o "$(bazel info bazel-testlogs)/sim_random_test/test.outputs/outputs.zip" \
       apb_mem.fst -d waves/
 ```
@@ -370,9 +372,7 @@ The payload always has `gate` + `status`; the rest depends on the gate:
 3. Re-run with `--test_arg=--waves` and open the FST to see the pins around that address.
 
 ```bash
-make wave                    # = bazel test //:sim_random_test --test_arg=--waves ...
-unzip -o "$(bazel info bazel-testlogs)/sim_random_test/test.outputs/outputs.zip" \
-      apb_mem.fst -d waves/
+make wave                    # runs the random test with --waves, extracts to waves/
 gtkwave waves/apb_mem.fst tb/apb_mem.gtkw      # a saved signal layout ships in tb/
 ```
 

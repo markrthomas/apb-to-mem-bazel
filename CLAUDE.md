@@ -34,9 +34,12 @@ The Starlark rules in `bazel/hdl.bzl` (`cocotb_test`, `hdl_tool_test`) generate 
 launcher that **shells out to the system toolchain** — they do not vendor Python, cocotb,
 or Icarus. This mirrors the reality the source Makefile lived in. Consequences:
 
-- Sim targets are tagged `local` + `no-sandbox` + `no-cache` (`_SIM_TAGS` in `hdl.bzl`).
-  Results are never cached because the outcome depends on the host toolchain, not just the
-  declared inputs. **Don't "fix" this by adding caching.**
+- Sim targets are tagged `local` + `no-sandbox` + `no-cache` (`_SIM_TAGS` in `hdl.bzl`) —
+  the outcome depends on the host toolchain, not just the declared inputs, so the *action*
+  cache is disabled. **Don't "fix" this by adding caching.** Note the `no-cache` tag does
+  **not** disable Bazel's *test-result* caching: an unchanged `bazel test` still replays a
+  "(cached) PASSED". Add `--nocache_test_results` to force a real re-run (e.g. `make wave`
+  does this so waves reflect fresh stimulus).
 - One `@cocotb.test` runs per Bazel target (its own `vvp`) — that's what gives each test a
   fresh, time-0-zeroed memory. `functional_suite` in `hdl.bzl` stamps out one
   `sim_<testcase>` target per testcase.
