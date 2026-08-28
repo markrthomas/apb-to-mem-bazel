@@ -96,3 +96,18 @@ A "skip" is a **pass** here (exit 0) — matches the source Makefile's graceful 
 - `COV_MIN=<n> bazel test --test_env=COV_MIN //:coverage` overrides the 100% line-coverage
   floor. `UVM_TEST=<name>` (via `--test_env`) picks the UVM test.
 - Only the BFM (`tb/apb_bfm.py`) touches DUT pins; keep pyuvm components simulator-agnostic.
+
+## UVM on open-source Verilator (`uvm/vlt`)
+
+License-free way to run this repo's UVM env under **Verilator 5.050** (no
+VCS/Xcelium/Questa), added 2026-08-28. **Passing** in CI
+(`.github/workflows/verilator-uvm.yml`; builds Verilator from source + installs
+**z3** for `randomize()` + `ccache`; lint + `--binary` `write_read` smoke).
+
+Local (lint RAM-safe; `--binary` wants big-RAM/CI):
+```sh
+V=~/verilator/bin/verilator ; U=~/verilator/test_regress/t/uvm
+( unset VERILATOR_ROOT; make -C uvm/vlt lint   VERILATOR=$V UVM_HOME=$U )
+( unset VERILATOR_ROOT; make -C uvm/vlt write_read VERILATOR=$V UVM_HOME=$U )
+```
+Details: `uvm/vlt/README.md`.
