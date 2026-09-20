@@ -13,7 +13,7 @@
 BAZEL ?= bazel
 
 .PHONY: default help \
-	test test-all test-write-read test-random test-walking test-one wave \
+	test test-all cocotb test-write-read test-random test-walking test-one wave \
 	lp lint coverage uvm check regress ci sim clean
 
 default: help
@@ -23,6 +23,7 @@ help:
 	@echo ""
 	@echo "  Tests (cocotb / pyuvm):"
 	@echo "    make test / test-all     # bazel test //:sim  (all three functional tests)"
+	@echo "    make cocotb              # alias for test-all (cross-repo DV_STANDARDS.md name)"
 	@echo "    make test-write-read     # bazel test //:sim_write_read_test"
 	@echo "    make test-random         # bazel test //:sim_random_test"
 	@echo "    make test-walking        # bazel test //:sim_walking_test"
@@ -53,6 +54,9 @@ test: test-all
 
 test-all:
 	$(BAZEL) test //:sim $(ARGS)
+
+# Cross-repo DV_STANDARDS.md alias for the functional/cocotb tier.
+cocotb: test-all
 
 test-write-read:
 	$(BAZEL) test //:sim_write_read_test $(ARGS)

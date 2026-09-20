@@ -226,11 +226,14 @@ flowchart LR
 ## Targets & the `make` → `bazel` mapping
 
 An **optional** `Makefile` wrapper (`make help`) restores the familiar verbs;
-each just runs the `bazel test` in the right column.
+each just runs the `bazel test` in the right column. Target *names* follow the
+cross-repo [DV_STANDARDS.md](DV_STANDARDS.md) convention shared with this
+maintainer's other RTL/DV repos.
 
 | Old Make target | bazel command | Gate | Tags | Skips when… |
 |---|---|---|---|---|
 | `make test` / `make test-all` | `bazel test //:sim` | 3 functional tests | `sim` | — |
+| `make cocotb` | `bazel test //:sim` | alias for `test-all` | `sim` | — |
 | `make test-write-read` | `bazel test //:sim_write_read_test` | write→read-back | `sim` | — |
 | `make test-random` | `bazel test //:sim_random_test` | random R/W mix | `sim` | — |
 | `make test-walking` | `bazel test //:sim_walking_test` | directed edges | `sim` | — |
