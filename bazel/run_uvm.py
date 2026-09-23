@@ -8,7 +8,7 @@ On a licensed host it compiles + runs the multi-file TB.
 
 Usage: run_uvm.py <if.sv> <rtl.sv> <sva.sv> <pkg.sv> <top.sv> [--json <path>]
        (sources in uvm/Makefile MULTI_SRC order)
-Select the UVM test with the UVM_TEST env var (default apb_write_read_test).
+Select the UVM test with the UVM_TEST env var (default apb_random_test).
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import jsonout  # noqa: E402
 
-UVM_TEST = os.environ.get("UVM_TEST", "apb_write_read_test")
+UVM_TEST = os.environ.get("UVM_TEST", "apb_random_test")
 
 
 def main() -> int:
