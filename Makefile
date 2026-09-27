@@ -30,7 +30,7 @@ help:
 	@echo "    make test-one TEST=<name># bazel test //:sim_<name>"
 	@echo ""
 	@echo "  Waves (FST):"
-	@echo "    make wave                # dump + extract waves to waves/ for //:sim_random_test (override TEST=<name>)"
+	@echo "    make wave                # run //:sim_random_test, dump FST, open GTKWave w/ tb/apb_mem.gtkw (TEST=<name>)"
 	@echo ""
 	@echo "  Other gates:"
 	@echo "    make lp                  # bazel test //:lp"
@@ -71,19 +71,30 @@ test-one:
 	@if [ -z "$(TEST)" ]; then echo "usage: make test-one TEST=<testcase>"; exit 2; fi
 	$(BAZEL) test //:sim_$(TEST) $(ARGS)
 
-# Dump an FST waveform and extract it to $(WAVE_DIR)/ ready to open. Defaults to
-# the random read/write test; override with TEST=<name> (e.g. TEST=walking_test).
-# --nocache_test_results forces a fresh run (test-result caching is otherwise on,
-# despite the no-cache tag) so the waves reflect the current stimulus.
+# Run one test (default: the random read/write test; override with TEST=<name>,
+# e.g. TEST=walking_test), dump an FST, extract it to $(WAVE_DIR)/ and open it in
+# GTKWave with the curated tb/apb_mem.gtkw layout, zoomed to fit the whole test
+# (tb/zoom_full.tcl). --nocache_test_results forces a fresh run (test-result
+# caching is otherwise on, despite the no-cache tag) so the waves reflect the
+# current stimulus. Old FSTs in $(WAVE_DIR) are removed first so a stale dump
+# from another test is never opened. Skips the viewer (exit 0) when gtkwave
+# is not on PATH, per DV_STANDARDS.md.
 WAVE_TEST = $(if $(TEST),$(TEST),random_test)
 WAVE_DIR ?= waves
+WAVE_GTKW := tb/apb_mem.gtkw
 wave:
 	$(BAZEL) test //:sim_$(WAVE_TEST) --test_arg=--waves --nocache_test_results --test_output=all $(ARGS)
-	@mkdir -p $(WAVE_DIR)
+	@mkdir -p $(WAVE_DIR) && find $(WAVE_DIR) -name '*.fst' -delete
 	@unzip -o "$$($(BAZEL) info bazel-testlogs)/sim_$(WAVE_TEST)/test.outputs/outputs.zip" '*.fst' -d $(WAVE_DIR) >/dev/null
-	@echo ""
-	@echo "  Waveform: $$(ls $(WAVE_DIR)/*.fst)"
-	@echo "  open with: gtkwave $(WAVE_DIR)/*.fst tb/apb_mem.gtkw"
+	@fst=$$(find $(WAVE_DIR) -name '*.fst' | head -1); \
+	if [ -z "$$fst" ]; then echo "[WAVE] no FST produced for sim_$(WAVE_TEST)"; exit 1; fi; \
+	echo "[WAVE] $(WAVE_TEST) waveform: $$fst"; \
+	if command -v gtkwave >/dev/null 2>&1; then \
+		echo "[WAVE] opening in GTKWave with $(WAVE_GTKW)"; \
+		exec gtkwave -S tb/zoom_full.tcl "$$fst" $(WAVE_GTKW); \
+	else \
+		echo "[WAVE] gtkwave not on PATH — open with: gtkwave $$fst $(WAVE_GTKW)"; \
+	fi
 
 # --- other gates -------------------------------------------------------------
 

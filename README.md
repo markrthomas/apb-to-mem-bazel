@@ -345,13 +345,15 @@ Per-gate payload shape (all include `gate` + `status`):
 
 ## Waveforms
 
-The easy path — `make wave` runs a test with `--waves` and drops a ready-to-open
-FST in `waves/` (defaults to the random test; override with `TEST=<name>`):
+The easy path — `make wave` runs a test with `--waves`, extracts the FST to
+`waves/` and opens it in GTKWave with the saved `tb/apb_mem.gtkw` layout, zoomed
+to fit the whole test (defaults to the random test; override with `TEST=<name>`;
+without `gtkwave` on `PATH` it stops after the dump):
 
 ```bash
-make wave                              # → waves/apb_mem.fst
+make wave                              # → waves/apb_mem.fst, opened in GTKWave
 make wave TEST=walking_test            # a different testcase
-gtkwave waves/apb_mem.fst tb/apb_mem.gtkw   # tb/ ships a saved signal layout
+gtkwave waves/apb_mem.fst tb/apb_mem.gtkw   # reopen by hand
 ```
 
 Under the hood: the `cocotb_test` launcher forwards `--waves` to the runner,
