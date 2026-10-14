@@ -36,6 +36,8 @@ help:
 	@echo "    make lp                  # bazel test //:lp"
 	@echo "    make lint                # bazel test //:lint"
 	@echo "    make coverage            # bazel test //:coverage"
+	@echo "    make formal              # formal tier (n/a stub if none)"
+	@echo "    make stress              # stress / randomized simulation (n/a stub if none)"
 	@echo "    make uvm                 # bazel test //:uvm  (skips w/o a UVM sim)"
 	@echo ""
 	@echo "  Aggregates:"
@@ -129,3 +131,9 @@ sim:
 
 clean:
 	$(BAZEL) clean
+
+# Standard DV targets (DV_STANDARDS.md)
+.PHONY: stress formal
+stress: test-random
+formal:
+	@echo "[FORMAL] n/a: no formal tier in this repo yet (see DV_STANDARDS.md)"
