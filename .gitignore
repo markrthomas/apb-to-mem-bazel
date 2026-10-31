@@ -26,3 +26,5 @@ uvm/*.log
 
 # Local scratch notes (not tracked)
 NOTES.md
+/tb/random/runs/
+/docker/last-run-metrics.json
