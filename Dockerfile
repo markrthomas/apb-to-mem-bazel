@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # satisfies PEP 668 (Ubuntu 24.04 marks the system Python externally managed)
 # and keeps the cocotb interpreter self-contained. cocotb's makefiles pick up
 # `python`/`python3` from PATH.
-RUN npm install -g @bazel/bazelisk && ln -sf "$(command -v bazelisk)" /usr/local/bin/bazel
+RUN npm install -g @bazel/bazelisk@1.28.1 && ln -sf "$(command -v bazelisk)" /usr/local/bin/bazel
 
 ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv "$VIRTUAL_ENV"
@@ -66,9 +66,10 @@ ENV PYTHON=/opt/venv/bin/python3
 
 # Claude Code CLI for swarm runs (dv-swarm-kit: devcontainer, swarm workflow, Railway swarm service).
 ARG WITH_CLAUDE=0
+ARG CLAUDE_CODE_VERSION=2.1.322   # pinned: bump on purpose, in a PR
 RUN if [ "$WITH_CLAUDE" = "1" ]; then \
       apt-get update && apt-get install -y --no-install-recommends nodejs npm gh \
-      && npm install -g @anthropic-ai/claude-code && rm -rf /var/lib/apt/lists/*; \
+      && npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && rm -rf /var/lib/apt/lists/*; \
     fi
 
 # -----------------------------------------------------------------------------
