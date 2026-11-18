@@ -38,8 +38,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         git \
         make \
-        nodejs \
-        npm \
+        curl \
+        gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 22 from NodeSource (signed apt repo): Ubuntu's nodejs is too old for current tools (Claude Code needs >= 22)
+ARG NODE_MAJOR=22
+RUN install -d -m 0755 /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
+         > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps (cocotb + pyuvm + cocotb_coverage + pytest) in an isolated venv --
@@ -68,8 +77,9 @@ ENV PYTHON=/opt/venv/bin/python3
 ARG WITH_CLAUDE=0
 ARG CLAUDE_CODE_VERSION=2.1.322   # pinned: bump on purpose, in a PR
 RUN if [ "$WITH_CLAUDE" = "1" ]; then \
-      apt-get update && apt-get install -y --no-install-recommends nodejs npm gh \
-      && npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && rm -rf /var/lib/apt/lists/*; \
+      apt-get update && apt-get install -y --no-install-recommends gh \
+      && npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
+      && claude --version && rm -rf /var/lib/apt/lists/*; \
     fi
 
 # -----------------------------------------------------------------------------
